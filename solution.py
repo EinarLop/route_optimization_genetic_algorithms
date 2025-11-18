@@ -24,6 +24,8 @@ items = {
     10: 2.5
 }
 
+warehouse_location = (0,0)
+
 orders = {
     1: [{'item': 3, 'unit': 2}, {'item': 1, 'unit': 3}],
     2: [{'item': 2, 'unit': 6}],
@@ -33,7 +35,7 @@ orders = {
 }
 
 class RouteOptimization:
-    def __init__(self, num_vehicles, number_customers, customer_locations, items, orders, population_size):
+    def __init__(self, num_vehicles, number_customers, customer_locations, items, orders, population_size,max_load_vehicle):
         self.population = []
         self.num_vehicles = num_vehicles
         self.customers = list(range(1, number_customers+1))
@@ -42,6 +44,23 @@ class RouteOptimization:
         self.orders = orders
         self.population_size = population_size
         self.population_fitness = []
+        self.order_weights = {}
+        self.max_load_vehicle = max_load_vehicle
+
+    def euclidean_distance(self, point1, point2):
+        return math.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
+
+    def generate_order_weights(self):
+        for key, value in self.orders.items():
+            for order in value:
+
+                if self.order_weights.get(key) is None:
+                    self.order_weights[key] = 0
+
+                self.order_weights[key] += items[order['item']] * order['unit']
+
+        print(self.order_weights)
+
 
     def generate_individual(self):
         # Considering that the worst case scenario is to go back to the warehouse after each customer
@@ -53,7 +72,8 @@ class RouteOptimization:
         vehicles = []
 
         for i in range(self.num_vehicles):
-            current_vehicle_length = random.randint(1, max_length_per_vehicle)
+            # Min. length of 3, vehicle needs to at least consider warehouse, 1 stop and return to warehouse
+            current_vehicle_length = random.randint(3, max_length_per_vehicle)
             current_vehicle_load = [random.randint(min_val, max_val) for _ in range(current_vehicle_length)]
             vehicles.append(current_vehicle_load)
         return vehicles
@@ -61,39 +81,56 @@ class RouteOptimization:
     def generate_population(self):
         return [self.generate_individual() for x in range(self.population_size)]
 
-    # Each customer is visited only once.
+    # CHANGE TO CONSIDER SUB ORDERS
+    # Each customer is visited only once. Returns fitness score
     def evaluate_constraint_1(self, individual):
         flatten_individual = [item for sublist in individual for item in sublist]
 
         if len(flatten_individual) < len(self.customers):
-            return False
+            return 100
 
         for customer in self.customers:
             if flatten_individual.count(customer) != 1:
-                return False
+                return 100
+        return 0
 
-        return True
+    # Route starts and ends at warehouse. Returns fitness score.
+    def evaluate_constraint_2(self, individual):
+        current_fitness = 0
+        for vehicle in individual:
+            if vehicle[0] != 0 and vehicle[-1] != 0:
+                current_fitness += 100
+            else:
+                current_fitness += 0
+        return current_fitness
+
+    # Overload is not allowed
+    def evaluate_constraint_3(self, individual):
+        pass
 
     def calculate_fitness(self, individual):
         current_fitness = 0
-        if not self.evaluate_constraint_1(individual):
-            current_fitness += -100
-        else:
-            current_fitness += 100
+        current_fitness += self.evaluate_constraint_1(individual)
+        current_fitness += self.evaluate_constraint_2(individual)
+        if current_fitness == 0:
+            print("Constraint 3 Evaluation:")
+            current_fitness += self.evaluate_constraint_3(individual)
+
         return current_fitness
 
     def evaluate_population(self):
-        print(self.customers)
         self.population_fitness = []
-        for individual in self.population:
+        for i, individual in enumerate(self.population):
             calculate_fitness = self.calculate_fitness(individual)
             self.population_fitness.append(calculate_fitness)
 
+            print(f"Individual {i} : {self.population[i]}, \n Fitness: {self.population_fitness[i]}")
+
     def run(self):
+        self.generate_order_weights()
         self.population = self.generate_population()
         self.evaluate_population()
-        print(sorted(self.population_fitness)[-1])
 
-test = RouteOptimization(2, number_customers, customer_locations, items, orders, 100)
+test = RouteOptimization(2, number_customers, customer_locations, items, orders, 1000, 60)
 
 test.run()
