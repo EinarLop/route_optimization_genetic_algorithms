@@ -68,14 +68,29 @@ class RouteOptimization:
             random.shuffle(temp)
             self.population.append(temp)
 
+    def evaluate_constraint_1(self, individual):
+        fitness_score = 0
+        arr_idx_sub_sub_orders = list(range(len(self.sub_sub_orders)))
+        for item in arr_idx_sub_sub_orders:
+            if individual.count(item) == 0:
+                fitness_score += 10
+            elif individual.count(item) > 1:
+                fitness_score += 10
+        return fitness_score
+
+    def evaluate_constraint_2(self, individual):
+        pass
     def calculate_individual_fitness(self, individual):
         fitness_score = 0
+        fitness_score += self.evaluate_constraint_1(individual)
+        fitness_score += self.evaluate_constraint_2(individual)
         return fitness_score
 
     def calculate_population_fitness(self):
         for individual in self.population:
            fitness_score = self.calculate_individual_fitness(individual)
            self.population_fitness.append(fitness_score)
+        print(self.population_fitness)
 
     def euclidean_distance(self, point1, point2):
         return math.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
@@ -84,6 +99,8 @@ class RouteOptimization:
     def run(self):
         self.extract_sub_sub_orders()
         self.generate_initial_population()
+        self.calculate_population_fitness()
+
 
 test = RouteOptimization(2, number_customers, customer_locations, items, orders, 1000, 60)
 
