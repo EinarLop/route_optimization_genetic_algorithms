@@ -40,7 +40,7 @@ orders = {
 }
 
 class RouteOptimization:
-    def __init__(self, num_vehicles, number_customers, customer_locations, items, orders, population_size,max_load_vehicle):
+    def __init__(self, num_vehicles, number_customers, customer_locations, items, orders, population_size,max_load_vehicle, mutation_rate, generations):
         self.population = []
         self.num_vehicles = num_vehicles
         self.customers = list(range(1, number_customers+1))
@@ -52,6 +52,8 @@ class RouteOptimization:
         self.order_weights = {}
         self.max_load_vehicle = max_load_vehicle
         self.sub_sub_orders = []
+        self.mutation_rate = mutation_rate
+        self.generations = generations
 
     def extract_sub_sub_orders(self):
         for key, value in self.orders.items():
@@ -72,29 +74,20 @@ class RouteOptimization:
             random.shuffle(temp)
             self.population.append(temp)
 
+    # All items need to be delivered
+    # Items can only be delivered once
     def evaluate_constraint_1(self, individual):
         fitness_score = 0
         arr_idx_sub_sub_orders = list(range(len(self.sub_sub_orders)))
         for item in arr_idx_sub_sub_orders:
             if individual.count(item) == 0:
                 fitness_score += 10
+                print("Constraint 1 applied")
             elif individual.count(item) > 1:
                 fitness_score += 10
-        return fitness_score
+                print("Constraint 1 applied")
 
-    def evaluate_constraint_2(self, individual):
-        pass
-    def calculate_individual_fitness(self, individual):
-        fitness_score = 0
-        fitness_score += self.evaluate_constraint_1(individual)
-        fitness_score += self.evaluate_constraint_2(individual)
         return fitness_score
-
-    def calculate_population_fitness(self):
-        for individual in self.population:
-           fitness_score = self.calculate_individual_fitness(individual)
-           self.population_fitness.append(fitness_score)
-        print(self.population_fitness)
 
     def euclidean_distance(self, point1, point2):
         return math.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
@@ -118,8 +111,9 @@ class RouteOptimization:
             if not genotype_deque:
                 break
         return vehicle_routes
-        
-    def get_routes_total_distance(self, individual: List[int]) -> float:
+
+    # Minimizing the distance of the routes
+    def evaluate_constraint_2(self, individual: List[int]) -> float:
         total_distance = 0.0
         vehicle_routes = self.decode_routes(individual)
         vehicles_distances = defaultdict(float)
@@ -129,14 +123,96 @@ class RouteOptimization:
                     vehicles_distances[vehicle] += self.euclidean_distance(route[i], route[i + 1])
             total_distance += vehicles_distances[vehicle]
         return total_distance
-        
+
+    def calculate_individual_fitness(self, individual):
+        fitness_score = 0
+        fitness_score += self.evaluate_constraint_1(individual)
+        fitness_score += self.evaluate_constraint_2(individual)
+        return fitness_score
+
+    def calculate_population_fitness(self):
+        self.population_fitness = []
+        for individual in self.population:
+           fitness_score = self.calculate_individual_fitness(individual)
+           self.population_fitness.append(fitness_score)
+
+    # Selection based on elitism, the two parents with the max fitness are selected
+    # Returns best individuals
+    def select_parents(self):
+        sorted_indices_and_values = sorted(enumerate(self.population_fitness), key=lambda x: x[1])
+        index_of_max1 = sorted_indices_and_values[0][0]
+        index_of_max2 = sorted_indices_and_values[1][0]
+        # print(f"Parent 1 : {self.population[index_of_max1]}")
+        print(f"Parent 1 Fitness: {self.population_fitness[index_of_max1]}")
+        # print(f"Parent 2 : {self.population[index_of_max2]}")
+        print(f"Parent 2 Fitness: {self.population_fitness[index_of_max2]}")
+
+        return self.population[index_of_max1], self.population[index_of_max2]
+
+    def ox1_crossover(self, parent_1, parent_2):
+        size = len(parent_1)
+        # Choose two random crossover points
+        cx_point1, cx_point2 = sorted(random.sample(range(size), 2))
+
+        # Initialize child with None (or -1)
+        child = [None] * size
+
+        # 2. Copy the sub-segment from Parent 1
+        child[cx_point1:cx_point2] = parent_1[cx_point1:cx_point2]
+
+        # 3. Fill remaining slots with Parent 2 genes
+        # Start reading P2 and filling Child from the index immediately after the second cut
+        p2_index = cx_point2
+        child_index = cx_point2
+
+        filled_count = 0
+        total_to_fill = size - (cx_point2 - cx_point1)
+
+        while filled_count < total_to_fill:
+            # Get gene from P2, wrapping around using modulo
+            gene = parent_2[p2_index % size]
+
+            # If gene is not already in the child, insert it
+            if gene not in child:
+                child[child_index % size] = gene
+                child_index += 1
+                filled_count += 1
+
+            p2_index += 1
+
+        return child
+
+    def generate_new_population(self, parent_1, parent_2):
+        self.population = []
+        while len(self.population) < self.population_size:
+            # Generate a pair of children
+            child_1 = self.ox1_crossover(parent_1, parent_2)
+            child_2 = self.ox1_crossover(parent_2, parent_1)
+
+            # Add first child
+            self.population.append(child_1)
+
+            # Add second child only if we haven't reached size n yet
+            if len(self.population) < self.population_size:
+                self.population.append(child_2)
+
+    def swap_mutation(self):
+        for individual in self.population:
+            if random.random() < self.mutation_rate:
+                idx1, idx2 = random.sample(range(len(individual)), 2)
+                individual[idx1], individual[idx2] = individual[idx2], individual[idx1]
 
     def run(self):
         self.extract_sub_sub_orders()
         self.generate_initial_population()
-        self.calculate_population_fitness()
 
+        for i in range(self.generations):
+            print(f"Generation {i+1}")
+            self.calculate_population_fitness()
+            parent_1, parent_2 = self.select_parents()
+            self.generate_new_population(parent_1, parent_2)
+            self.swap_mutation()
 
-test = RouteOptimization(2, number_customers, customer_locations, items, orders, 1000, 60)
+test = RouteOptimization(2, number_customers, customer_locations, items, orders, 100, 60,0.1,100)
 
 test.run()
