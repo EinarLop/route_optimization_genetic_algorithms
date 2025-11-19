@@ -1,8 +1,12 @@
+from itertools import cycle
 import math
 import random
-from collections import defaultdict
+from collections import defaultdict, deque
+from typing import Dict, List, Tuple
 
 number_customers = 5
+
+vehicle_capacity = 60.0  # in kilograms
 
 customer_locations = {
     1: (35, 115),
@@ -80,6 +84,37 @@ class RouteOptimization:
     def euclidean_distance(self, point1, point2):
         return math.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
 
+    def decode_routes(self, individual: List[int]) -> Dict[int, Tuple[float, float]]:
+        vehicle_iterator = cycle(range(self.num_vehicles))
+        vehicle_routes = {vehicle: [warehouse_location] for vehicle in range(self.num_vehicles)}
+        vehicle_loads = defaultdict(float)
+        genotype_deque = deque(individual)
+        for vehicle in vehicle_iterator:
+            while genotype_deque:
+                shipment_key = genotype_deque.popleft()
+                if vehicle_loads[vehicle] + self.sub_sub_orders[shipment_key]['weight'] <= vehicle_capacity:
+                    vehicle_loads[vehicle] += self.sub_sub_orders[shipment_key]['weight']
+                    if vehicle_routes[vehicle][-1] != self.sub_sub_orders[shipment_key]['cords']:
+                        vehicle_routes[vehicle].append(self.sub_sub_orders[shipment_key]['cords'])
+                else:
+                    break
+            vehicle_routes[vehicle].append(warehouse_location)
+            vehicle_loads[vehicle] = 0.0
+            if not genotype_deque:
+                break
+        return vehicle_routes
+        
+    def get_routes_total_distance(self, individual: List[int]) -> float:
+        total_distance = 0.0
+        vehicle_routes = self.decode_routes(individual)
+        vehicles_distances = defaultdict(float)
+        for vehicle, route in vehicle_routes.items():
+            if len(route) > 1:
+                for i in range(len(route) - 1):
+                    vehicles_distances[vehicle] += self.euclidean_distance(route[i], route[i + 1])
+            total_distance += vehicles_distances[vehicle]
+        return total_distance
+        
 
     def run(self):
         self.extract_sub_sub_orders()
